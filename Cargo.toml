@@ -23,10 +23,10 @@ dirs = "5.0.1"
 env_logger = "0.10.0"
 fcm-push-listener = "2.0.1"
 futures = "0.3.28"
-gstreamer = "0.21.0"
-gstreamer-app = { version = "0.21.0", features = ["v1_18"] }
-gstreamer-rtsp = { version = "0.21.0", features = ["v1_18"] }
-gstreamer-rtsp-server = { version = "0.21.0", features = ["v1_18"] }
+gstreamer = "0.18.8"
+gstreamer-app = { version = "0.18.7", features = ["v1_14"] }
+gstreamer-rtsp = { version = "0.18.0", features = ["v1_14"] }
+gstreamer-rtsp-server = { version = "0.18.7", features = ["v1_14"] }
 heck = "0.4.1"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
