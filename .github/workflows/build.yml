@@ -20,99 +20,12 @@ jobs:
           concurrent_skipping: 'same_content_newer'
           skip_after_successful_duplicate: 'false'
 
-  native:
-    needs: pre_job
-    if: needs.pre_job.outputs.should_skip != 'true'
-    name: native
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-2022, macos-12]
-    steps:
-      - uses: actions/checkout@v3
-        name: Checkout onto ${{ runner.os }}
-      - if: runner.os == 'Linux'
-        name: apt install gstreamer
-        run: |
-          sudo apt update
-          sudo apt install -y aptitude
-          sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev protobuf-compiler libssl-dev
-      - if: runner.os == 'Windows'
-        name: Install Gstreamer
-        run: |
-          # Gstreamer
-          choco install -y --no-progress gstreamer --version=1.20.0
-          choco install -y --no-progress gstreamer-devel --version=1.20.0
-          $env:GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:SYSTEMDRIVE + '\gstreamer\1.0\msvc_x86_64\'
-          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
-
-          # Proto buffers
-          choco install -y --no-progress protoc --version=24.2.0
-
-          # Open SSL
-          choco install -y --no-progress openssl --version=1.1.1.2100
-          $env:OPENSSL_DIR=$env:SYSTEMDRIVE + '\Program Files\OpenSSL-Win64\'
-          if (-not (Test-Path -Path "$env:OPENSSL_DIR" -PathType Container)) {
-            $env:OPENSSL_DIR=$env:SYSTEMDRIVE + '\Program Files\OpenSSL\'
-          }
-
-          # Set github vars
-          Add-Content -Path $env:GITHUB_ENV  -Value "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
-          Add-Content -Path $env:GITHUB_PATH  -Value "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64\bin"
-          Add-Content -Path $env:GITHUB_PATH  -Value "%GSTREAMER_1_0_ROOT_MSVC_X86_64%\bin"
-          Add-Content -Path $env:GITHUB_ENV  -Value "OPENSSL_DIR=$env:OPENSSL_DIR"
-
-          # One last check on directories
-          dir "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
-          dir "$env:OPENSSL_DIR"
-      - if: runner.os == 'macOS'
-        name: Install Gstreamer on macOS
-        run: |
-          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.20.4/gstreamer-1.0-devel-1.20.4-universal.pkg' -o "$(pwd)/gstreamer-devel.pkg"
-          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
-          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-          PKG_CONFIG_GSTREAMER_1_0_PREFIX="/Library/Frameworks/GStreamer.framework/Versions/1.0"
-          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
-          echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
-          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          brew install pkg-config protobuf openssl@1.1
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@1.1)/include/" >>  "${GITHUB_ENV}"
-          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@1.1)/lib/" >>  "${GITHUB_ENV}"
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache cargo index
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache cargo build
-        if: runner.os != 'macOS' # Random missing crates on macOS, unclear why
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      - name: Build
-        shell: bash
-        run: |
-          echo "PATH=${PATH}"
-          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=${GSTREAMER_1_0_ROOT_MSVC_X86_64}"
-          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          # pkg-config --variable pc_path pkg-config
-          cargo  build --release --all-features
-      - uses: actions/upload-artifact@v3
-        with:
-          name: release-${{ matrix.os }}
-          path: "target/release/neolink*"
   cross:
     needs: pre_job
     if: needs.pre_job.outputs.should_skip != 'true'
     name: cross
     runs-on: ubuntu-latest
-    container: "node:current-bookworm-slim"
+    container: "node:current-buster-slim"
     strategy:
       fail-fast: false
       matrix:
@@ -120,23 +33,10 @@ jobs:
         # Rust uses the target triple, GCC generally targets a family
         # with a specific prefix, and dpkg's arch does its own thing
         include:
-          - arch: amd64
-            target: x86_64-unknown-linux-gnu
-            gcc: x86-64-linux-gnu
-            pkgconfig: x86_64-linux-gnu
           - arch: armhf
             target: armv7-unknown-linux-gnueabihf
             gcc: arm-linux-gnueabihf
             pkgconfig: arm-linux-gnueabihf
-          - arch: arm64
-            target: aarch64-unknown-linux-gnu
-            gcc: aarch64-linux-gnu
-            pkgconfig: aarch64-linux-gnu
-          - arch: i386
-            target: i686-unknown-linux-gnu
-            gcc: i686-linux-gnu
-            # on i686, the pkgconfig path doesn't match the prefix!
-            pkgconfig: i386-linux-gnu
     steps:
       - uses: actions/checkout@v3
       - name: Install basic tools
@@ -300,7 +200,7 @@ jobs:
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
-          name: release-i386-bookworm
+          name: release-i386-buster
           path: linux/386
       - name: Push to Docker Hub
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
@@ -321,7 +221,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push' # Ensure this only runs on a tag or expect issues
     needs:
       - "cross"
-      - "native"
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
